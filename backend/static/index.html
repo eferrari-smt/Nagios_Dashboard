@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Panel de control de CSL</title>
+<link rel="stylesheet" href="/static/css/styles.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="topbar-title">
+    <h1>Panel de control de CSL</h1>
+    <span class="subtitle">Smartmation — Telegestión de luminarias</span>
+  </div>
+
+  <div class="freshness" id="freshness">
+    <span class="freshness-item" id="lastUpdated">Última actualización: —</span>
+    <span class="badge" id="connectionBadge">—</span>
+    <button class="btn btn-refresh" id="refreshBtn" title="Refrescar ahora">⟳ Actualizar</button>
+    <span class="session-user" id="sessionUser"></span>
+    <button class="btn" id="changePasswordBtn" title="Cambiar mi contraseña">Mi cuenta</button>
+    <button class="btn" id="logoutBtn" title="Cerrar sesión">Salir</button>
+  </div>
+</header>
+
+<nav class="tabs">
+  <button class="tab-btn active" data-tab="insights">Dashboard</button>
+  <button class="tab-btn" data-tab="alarmas">Alarmas</button>
+  <button class="tab-btn" data-tab="estado">Equipos</button>
+  <button class="tab-btn" data-tab="historico">Histórico</button>
+  <button class="tab-btn" data-tab="rma-testing">STOCK</button>
+  <button class="tab-btn" data-tab="reemplazar">Reemplazar</button>
+  <button class="tab-btn" data-tab="nagios-uploader">Uploader</button>
+</nav>
+
+<main>
+  <!-- Vista: Estado -->
+  <section class="tab-panel" id="tab-estado">
+    <div class="filters">
+      <input type="search" id="searchInput" placeholder="Buscar por nombre o RAK..." class="input-search">
+
+      <select id="filterAmbiente" class="input-select">
+        <option value="">Ambiente: todos</option>
+      </select>
+
+      <div class="state-filter-group" id="filterEstadoGroup">
+        <button class="state-filter-btn active" data-value="">Todos</button>
+        <button class="state-filter-btn state-up" data-value="UP">Activo</button>
+        <button class="state-filter-btn state-down" data-value="DOWN">Caído</button>
+      </div>
+
+      <select id="filterPatron" class="input-select">
+        <option value="">Patrón: todos</option>
+        <option value="cronico">Crónico</option>
+        <option value="intermitente">Intermitente</option>
+        <option value="reciente">Reciente</option>
+        <option value="recuperado">Recuperado</option>
+        <option value="estable">Estable</option>
+      </select>
+
+      <button class="btn" id="toggleTagFiltersBtn" aria-expanded="false">Tags ▾</button>
+    </div>
+
+    <div class="filters" id="tagFiltersRow" style="display:none">
+      <span class="filters-label">Tags:</span>
+      <div class="tag-filter-group" id="tagFilterGroup">
+        <button class="state-filter-btn active" data-tag-id="">Todos</button>
+      </div>
+      <button class="btn" id="manageTagsBtn">+ Tags</button>
+    </div>
+
+    <div class="filter-summary">
+      <span class="filter-summary-count" id="filterCount">—</span>
+      <span class="filter-summary-label" id="filterLabel">equipos</span>
+      <span class="filter-summary-split" id="filterSplit"></span>
+      <span class="filter-summary-total" id="filterTotal"></span>
+    </div>
+
+    <div class="bulk-bar" id="bulkBar" style="display:none">
+      <span id="bulkCount"></span>
+      <span class="filters-label">Aplicar tag:</span>
+      <div id="bulkTagButtons" class="tag-filter-group"></div>
+      <button class="btn" id="clearSelectionBtn">Cancelar selección</button>
+    </div>
+
+    <div class="table-wrap">
+      <table id="hostsTable">
+        <thead>
+          <tr>
+            <th class="col-select"><input type="checkbox" id="selectAllCheckbox"></th>
+            <th class="col-estado" data-sort="current_state">Estado</th>
+            <th data-sort="nombre_pc">Equipo</th>
+            <th data-sort="ambiente">Ambiente</th>
+            <th data-sort="downtime_seconds">Tiempo caído</th>
+            <th data-sort="pattern">Patrón</th>
+            <th data-sort="host_name">Host (Nagios)</th>
+            <th data-sort="sim">SIM</th>
+            <th>Servicios</th>
+            <th>Acciones</th>
+          </tr>
+        </thead>
+        <tbody id="hostsTableBody">
+          <tr><td colspan="10" class="empty-state">Cargando...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- Vista: Resumen (Insights) -->
+  <section class="tab-panel active" id="tab-insights">
+    <div class="filters">
+      <span class="filters-label">Informe descargable del estado actual, con fecha y hora de emisión.</span>
+      <button class="btn" id="downloadReportBtn">📄 Generar informe</button>
+    </div>
+
+    <div class="hero-tiles" id="heroTiles"></div>
+
+    <div class="insights-grid">
+      <div class="insights-panel">
+        <h2>Estado de los equipos</h2>
+        <div class="stat-tile-row" id="insightsHostTiles"></div>
+        <div class="composition-bar" id="insightsHostBar"></div>
+        <div class="insights-totals" id="insightsHostTotals"></div>
+      </div>
+      <div class="insights-panel">
+        <h2>Alarmas por equipo</h2>
+        <p class="block-hint">Chequeos que no están en OK. Un chequeo en OK no es una alarma.</p>
+        <div class="stat-tile-row" id="insightsServiceTiles"></div>
+        <div class="composition-bar" id="insightsServiceBar"></div>
+        <div class="insights-totals" id="insightsServiceTotals"></div>
+      </div>
+    </div>
+
+    <div class="insights-panel">
+      <h2>Por ambiente</h2>
+      <p class="block-hint">Estado de los equipos agrupado por ambiente.</p>
+      <div id="ambienteCards" class="ambiente-card-grid"></div>
+    </div>
+
+    <div class="insights-panel">
+      <h2>Distribución de patrones</h2>
+      <p class="block-hint">Cómo se clasifica el comportamiento histórico de cada equipo.</p>
+      <div id="patternBreakdown" class="breakdown-list"></div>
+    </div>
+  </section>
+
+  <!-- Vista: Alarmas -->
+  <section class="tab-panel" id="tab-alarmas">
+    <div class="hero-tiles" id="alarmSeverityTiles"></div>
+
+    <div class="insights-panel">
+      <h2>Por tipo de alarma</h2>
+      <p class="block-hint">Qué está fallando, no en qué equipo. Hacé clic en un tipo para filtrar.</p>
+      <div id="alarmTypeCards" class="alarm-type-grid"></div>
+    </div>
+
+
+    <!-- Bandeja de trabajo: crítico sostenido más de 48 h -->
+    <details class="insights-panel panel-intervencion" id="intervencionPanel" hidden open>
+      <summary>
+        <h2>Posible intervención necesaria</h2>
+        <span class="panel-contador" id="intervencionContador"></span>
+      </summary>
+      <p class="block-hint">
+        Alarmas críticas sostenidas más de 48 horas. A esta altura no se resuelven solas.
+      </p>
+      <div id="intervencionList" class="intervencion-list"></div>
+    </details>
+
+    <!-- Agentes que dejaron de reportar -->
+    <details class="insights-panel panel-mudos" id="agentesMudosPanel" hidden>
+      <summary>
+        <h2>Equipos sin datos del agente</h2>
+        <span class="panel-contador" id="mudosContador"></span>
+      </summary>
+      <p class="block-hint">
+        Todos sus chequeos llegan como desconocidos: el agente NRDP dejó de reportar.
+        No es lo mismo que un equipo sano.
+      </p>
+      <div id="agentesMudosList" class="mudos-list"></div>
+    </details>
+
+    <div class="filters">
+      <input type="search" id="alarmSearchInput" placeholder="Buscar por equipo o ambiente..." class="input-search">
+      <div class="state-filter-group" id="alarmSeverityGroup">
+        <button class="state-filter-btn active" data-value="">Todas</button>
+        <button class="state-filter-btn state-critical" data-value="CRITICAL">Crítico</button>
+        <button class="state-filter-btn state-warning" data-value="WARNING">Advertencia</button>
+        <button class="state-filter-btn state-unknown" data-value="UNKNOWN">Desconocido</button>
+      </div>
+      <span class="filter-count" id="alarmFilterCount"></span>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Gravedad</th>
+            <th>Equipo</th>
+            <th>Ambiente</th>
+            <th>Tipo de alarma</th>
+            <th>Hace</th>
+            <th>Detalle</th>
+            <th>Acciones</th>
+          </tr>
+        </thead>
+        <tbody id="alarmsTableBody">
+          <tr><td colspan="7" class="empty-state">Cargando...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- Vista: Histórico -->
+  <section class="tab-panel" id="tab-historico">
+    <div class="filters">
+      <input type="search" id="historyHostSearch" class="input-search input-wide"
+             placeholder="Buscar equipo por nombre o RAK..." list="historyHostOptions" autocomplete="off">
+      <datalist id="historyHostOptions"></datalist>
+      <select id="historyRangeSelect" class="input-select">
+        <option value="7">Últimos 7 días</option>
+        <option value="30">Últimos 30 días</option>
+        <option value="90">Últimos 90 días</option>
+      </select>
+    </div>
+    <div class="inconsistency-block" style="margin-bottom:22px">
+      <h2>Equipos reemplazados</h2>
+      <p class="block-hint">
+        Cada vez que se reemplaza la PC de un sitio queda registrado acá, con el RAK que tenía antes
+        y el que tiene ahora.
+      </p>
+      <div id="replacementsList"><p class="empty-state">Cargando...</p></div>
+    </div>
+
+    <div id="fichaEquipo" class="inconsistency-block" hidden style="margin-bottom:22px">
+      <h2 id="fichaTitulo"></h2>
+      <p class="block-hint" id="fichaSubtitulo"></p>
+      <div id="fichaDatos" class="ficha-datos"></div>
+
+      <h3 class="ficha-seccion">Reemplazos de este equipo</h3>
+      <div id="fichaReemplazos"></div>
+
+      <h3 class="ficha-seccion">Alarmas actuales</h3>
+      <div id="fichaAlarmas"></div>
+
+      <h3 class="ficha-seccion">Línea de tiempo de alarmas</h3>
+      <p class="block-hint">
+        Se registra desde el 22/10/2026, cuando se empezó a guardar. No hay datos anteriores.
+      </p>
+      <div id="fichaEventos"></div>
+    </div>
+
+    <div id="historyContent" class="history-content">
+      <p class="empty-state">Buscá un equipo para ver su ficha y su historial de estado.</p>
+    </div>
+  </section>
+
+  <!-- Vista: STOCK -->
+  <section class="tab-panel" id="tab-rma-testing">
+    <p class="block-hint">
+      Equipos que no están en servicio. La situación de cada uno se cambia acá mismo:
+      pasarlo a <strong>Producción</strong> lo devuelve a la pestaña Equipos y vuelve a contar en las alarmas.
+    </p>
+
+    <div class="hero-tiles" id="stockTiles"></div>
+
+    <div class="inconsistency-block">
+      <h2>Equipos fuera de producción</h2>
+      <p class="block-hint">
+        Reportan a Nagios pero están apartados a propósito, así que no cuentan como alarma.
+      </p>
+      <div class="filters">
+        <input type="search" id="stockSearchInput" class="input-search" placeholder="Buscar por equipo, RAK o ambiente...">
+        <div class="state-filter-group" id="stockEstadoGroup">
+          <button class="state-filter-btn active" data-value="">Todos</button>
+        </div>
+        <span class="filter-count" id="stockFilterCount"></span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Estado en Nagios</th><th>Equipo</th><th>Ambiente</th>
+              <th>Host (Nagios)</th><th>Situación</th><th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="stockTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="inconsistency-block">
+      <h2>Equipos del inventario sin actividad en Nagios</h2>
+      <p class="block-hint">
+        Nunca se dieron de alta ni se conectaron, así que no aparecen en Equipos. Se pueden editar,
+        cambiarles la situación o borrarlos del inventario si ya no existen.
+      </p>
+      <div class="filters">
+        <input type="search" id="pendingSearchInput" class="input-search" placeholder="Buscar por equipo, RAK o ambiente...">
+        <span class="filter-count" id="pendingFilterCount"></span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Equipo</th><th>Ambiente</th><th>RAK / Host derivado</th>
+              <th>Situación</th><th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="pendingInventoryTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- Vista: Reemplazar -->
+  <section class="tab-panel" id="tab-reemplazar">
+    <div class="inconsistency-block">
+      <h2>Reemplazar equipo existente</h2>
+      <p class="block-hint">
+        A diferencia de "Editar", acá SÍ se puede cambiar el RAK — pensado para cuando se
+        reemplaza físicamente el CSL de un sitio. Elegí el equipo por su host de Nagios,
+        revisá los datos que trae precargados y guardá el reemplazo completo.
+      </p>
+      <div class="filters">
+        <input type="search" id="replaceHostSearch" class="input-search input-wide"
+               placeholder="Buscar equipo por nombre, RAK o host de Nagios..." list="replaceHostOptions" autocomplete="off">
+        <datalist id="replaceHostOptions"></datalist>
+      </div>
+      <p class="rak-hint" id="replaceSearchHint"></p>
+      <div id="replaceForm" class="replace-form" style="display:none">
+        <label class="edit-field-label" for="replaceNombrePc">Nombre PC</label>
+        <input type="text" id="replaceNombrePc" class="input-search" style="width:100%">
+        <label class="edit-field-label" for="replaceRak">RAK</label>
+        <input type="text" id="replaceRak" class="input-search" style="width:100%"
+               placeholder="Pegá el RAK completo, no hace falta recortarlo">
+        <p class="rak-hint" id="replaceRakHint"></p>
+        <label class="edit-field-label" for="replaceAmbiente">Ambiente</label>
+        <select id="replaceAmbiente" class="input-select" style="width:100%"></select>
+        <input type="text" id="replaceAmbienteNew" class="input-search" style="width:100%;display:none" placeholder="Nombre del nuevo ambiente...">
+        <label class="edit-field-label" for="replaceAnydeskId">ID AnyDesk</label>
+        <input type="text" id="replaceAnydeskId" class="input-search" style="width:100%">
+        <label class="edit-field-label" for="replaceCrdId">ID Escritorio Remoto (Chrome Remote Desktop)</label>
+        <input type="text" id="replaceCrdId" class="input-search" style="width:100%">
+        <div class="edit-modal-actions">
+          <button class="btn btn-primary" id="saveReplaceBtn">Guardar reemplazo</button>
+        </div>
+      </div>
+    </div>
+
+  </section>
+
+  <section class="tab-panel" id="tab-nagios-uploader">
+    <div class="inconsistency-block">
+      <h2>Dar de alta un equipo</h2>
+      <p class="block-hint">
+        Carga el equipo en el inventario (si el RAK todavía no está) y lo da de alta en Nagios:
+        escribe el .cfg, valida la config completa y recarga el servicio. Si la validación falla,
+        se revierte el alta en Nagios y el servicio no se toca.
+      </p>
+      <div class="filters">
+        <input type="text" id="nagiosAddRak" class="input-search input-wide"
+               placeholder="Pegá el RAK completo, no hace falta recortarlo">
+        <button class="btn" id="nagiosAddPreviewBtn">Generar preview</button>
+      </div>
+      <p class="rak-hint" id="nagiosAddRakHint"></p>
+      <div class="replace-form">
+        <p class="block-hint">
+          Estos datos se usan solo si el RAK todavía no está en el inventario. Nombre PC y Ambiente
+          son obligatorios en ese caso.
+        </p>
+        <label class="edit-field-label" for="nagiosAddNombrePc">Nombre PC</label>
+        <input type="text" id="nagiosAddNombrePc" class="input-search" style="width:100%">
+        <label class="edit-field-label" for="nagiosAddAmbiente">Ambiente</label>
+        <select id="nagiosAddAmbiente" class="input-select" style="width:100%"></select>
+        <input type="text" id="nagiosAddAmbienteNew" class="input-search" style="width:100%;display:none" placeholder="Nombre del nuevo ambiente...">
+        <label class="edit-field-label" for="nagiosAddAnydeskId">ID AnyDesk</label>
+        <input type="text" id="nagiosAddAnydeskId" class="input-search" style="width:100%">
+        <label class="edit-field-label" for="nagiosAddCrdId">ID Escritorio Remoto</label>
+        <input type="text" id="nagiosAddCrdId" class="input-search" style="width:100%">
+      </div>
+      <div id="nagiosAddPreview" style="display:none">
+        <p class="block-hint" id="nagiosAddPreviewLabel"></p>
+        <div class="nagios-uploader-preview" id="nagiosAddPreviewContent"></div>
+        <div class="edit-modal-actions">
+          <button class="btn btn-danger" id="nagiosAddConfirmBtn">Confirmar y dar de alta</button>
+        </div>
+      </div>
+      <div id="nagiosAddResult"></div>
+    </div>
+
+    <div class="inconsistency-block">
+      <h2>Dar de baja un host de Nagios</h2>
+      <p class="block-hint">
+        Borra el archivo .cfg del servidor, valida la config completa y recarga el servicio. Si
+        la validación falla, se restaura el archivo y el servicio no se toca.
+      </p>
+      <div class="filters">
+        <input type="text" id="nagiosRemoveHostName" class="input-search input-wide" placeholder="Host de Nagios (ej. TGACSL612QWZ0Y2)...">
+        <button class="btn" id="nagiosRemovePreviewBtn">Generar preview</button>
+      </div>
+      <div id="nagiosRemovePreview" style="display:none">
+        <p class="block-hint" id="nagiosRemovePreviewLabel"></p>
+        <div class="nagios-uploader-preview" id="nagiosRemovePreviewContent"></div>
+        <div class="edit-modal-actions">
+          <button class="btn btn-danger" id="nagiosRemoveConfirmBtn">Confirmar y aplicar en Nagios</button>
+        </div>
+      </div>
+      <div id="nagiosRemoveResult"></div>
+    </div>
+  </section>
+
+</main>
+
+<div class="modal-backdrop" id="passwordModalBackdrop" style="display:none"></div>
+<div class="tag-modal" id="passwordModal" style="display:none">
+  <h3>Cambiar mi contraseña</h3>
+  <p class="block-hint" id="passwordModalUser"></p>
+
+  <label class="edit-field-label" for="currentPassword">Contraseña actual</label>
+  <input type="password" id="currentPassword" class="input-search" style="width:100%" autocomplete="current-password">
+
+  <label class="edit-field-label" for="newPassword">Contraseña nueva</label>
+  <input type="password" id="newPassword" class="input-search" style="width:100%" autocomplete="new-password">
+
+  <label class="edit-field-label" for="repeatPassword">Repetir la nueva</label>
+  <input type="password" id="repeatPassword" class="input-search" style="width:100%" autocomplete="new-password">
+
+  <p class="block-hint">Mínimo 8 caracteres. Al cambiarla se cierran las sesiones abiertas en otros dispositivos.</p>
+  <p class="login-error" id="passwordError" role="alert"></p>
+
+  <div class="edit-modal-actions">
+    <button class="btn btn-primary" id="savePasswordBtn">Guardar</button>
+    <button class="btn" id="closePasswordModalBtn">Cancelar</button>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="tagModalBackdrop" style="display:none"></div>
+<div class="tag-modal" id="tagModal" style="display:none">
+  <h3>Gestionar tags</h3>
+  <div id="tagManageList" class="tag-manage-list"></div>
+  <div class="tag-modal-new">
+    <input type="text" id="newTagName" placeholder="Nombre del tag nuevo" maxlength="30">
+    <input type="color" id="newTagColor" value="#2f6fed">
+    <select id="newTagCategory" class="input-select" title="Categoría">
+      <option value="">Normal</option>
+      <option value="rma">RMA</option>
+      <option value="testing">Testing</option>
+      <option value="refurbish">Refurbish</option>
+    </select>
+    <button class="btn btn-primary" id="createTagBtn">Crear</button>
+  </div>
+  <p class="block-hint">Un tag de categoría RMA, Testing o Refurbish saca a esos equipos de Estado/Alarmas/Resumen y los manda a la pestaña "Pendientes".</p>
+  <button class="btn" id="closeTagModalBtn">Cerrar</button>
+</div>
+
+<div class="modal-backdrop" id="editModalBackdrop" style="display:none"></div>
+<div class="tag-modal" id="editModal" style="display:none">
+  <h3>Editar equipo</h3>
+  <p class="block-hint" id="editHostLabel"></p>
+  <label class="edit-field-label" for="editNombrePc">Nombre PC</label>
+  <input type="text" id="editNombrePc" class="input-search" style="width:100%">
+  <label class="edit-field-label" for="editAmbiente">Ambiente</label>
+  <input type="text" id="editAmbiente" class="input-search" style="width:100%">
+  <label class="edit-field-label" for="editSim">SIM</label>
+  <input type="text" id="editSim" class="input-search" style="width:100%">
+  <label class="edit-field-label" for="editEmpresa">Empresa (operador de la SIM)</label>
+  <input type="text" id="editEmpresa" class="input-search" style="width:100%" placeholder="ej. Movistar">
+  <label class="edit-field-label" for="editEstado">Estado operativo</label>
+  <select id="editEstado" class="input-search" style="width:100%"></select>
+  <p class="block-hint">Solo los equipos en Producción se monitorean. El resto se ve en STOCK.</p>
+
+  <label class="edit-field-label">Tags</label>
+  <div id="editTagsActuales" class="edit-tags-actuales"></div>
+  <select id="editTagAgregar" class="input-search" style="width:100%"></select>
+
+  <label class="edit-field-label" for="editNotas">Notas / observaciones</label>
+  <textarea id="editNotas" rows="4" style="width:100%"></textarea>
+  <p class="block-hint">El RAK nunca se edita desde acá — es el dato que sostiene el cruce con Nagios.</p>
+  <div class="edit-modal-actions">
+    <button class="btn btn-primary" id="saveEditBtn">Guardar</button>
+    <button class="btn" id="closeEditModalBtn">Cancelar</button>
+  </div>
+</div>
+
+<div class="drawer-backdrop" id="hostDrawerBackdrop" hidden></div>
+<aside class="host-drawer" id="hostDrawer" hidden aria-labelledby="drawerTitle" role="dialog" aria-modal="true">
+  <header class="drawer-head">
+    <div class="drawer-titles">
+      <h2 id="drawerTitle"></h2>
+      <p class="drawer-subtitle" id="drawerSubtitle"></p>
+    </div>
+    <button class="drawer-close" id="drawerCloseBtn" title="Cerrar (Esc)" aria-label="Cerrar">×</button>
+  </header>
+  <div class="drawer-body" id="drawerBody"></div>
+</aside>
+
+<div class="modal-backdrop" id="servicesModalBackdrop" style="display:none"></div>
+<div class="tag-modal services-modal" id="servicesModal" style="display:none">
+  <h3 id="servicesModalTitle">Servicios</h3>
+  <div id="servicesModalList" class="services-modal-list"></div>
+  <button class="btn" id="closeServicesModalBtn">Cerrar</button>
+</div>
+
+<script type="module" src="/static/js/main.js"></script>
+</body>
+</html>

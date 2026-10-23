@@ -1,0 +1,13 @@
+.env
+*.pem
+__pycache__/
+*.pyc
+.venv/
+venv/
+data/*.db
+data/*.sqlite
+data/*.csv
+.pytest_cache/
+backend/logs/*.log
+backend/kite_explore_output/
+backend/kite_session.json
