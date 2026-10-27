@@ -1,3 +1,5 @@
+import dataclasses
+
 from app import dashboard_service
 from app.dashboard_service import HostView, get_insights, get_pending_inventory_hosts, is_operationally_excluded
 from app.db import get_connection, save_snapshot
@@ -6,6 +8,11 @@ from app.matching import MatchType
 from app.pattern_classifier import Pattern
 from app.status_parser import HostState, HostStatus
 from app.tags_store import TAG_CATEGORY_REFURBISH, TAG_CATEGORY_RMA, TAG_CATEGORY_TESTING, Tag, assign_tag, create_tag
+
+
+class _ConexionFalsa:
+    def close(self):
+        pass
 
 
 def make_snapshot_host(name, state):
@@ -48,24 +55,50 @@ def test_is_operationally_excluded_false_when_no_tags():
     assert is_operationally_excluded(host) is False
 
 
-def test_get_insights_excludes_rma_tagged_hosts(tmp_path, monkeypatch):
-    db_path = str(tmp_path / "test.db")
-    monkeypatch.setattr(dashboard_service, "load_database_path", lambda: db_path)
+def test_get_insights_usa_el_mismo_criterio_que_el_resto(monkeypatch):
+    """Los totales grandes tienen que cerrar con las tarjetas por ambiente.
 
-    conn = get_connection(db_path)
-    save_snapshot(conn, [
-        make_snapshot_host("H1", HostState.UP),
-        make_snapshot_host("H2", HostState.DOWN),
-        make_snapshot_host("H3", HostState.DOWN),
-    ], polled_at=1000)
-    rma_tag = create_tag(conn, "RMA", "#888888", category=TAG_CATEGORY_RMA)
-    assign_tag(conn, rma_tag.id, ["H2"])  # H2 está en RMA: no debe contar como caído
-    conn.close()
+    Antes Insights excluía por tag mientras el resto ya miraba el estado del
+    inventario, y el número grande mostraba 222 contra 225 de las tarjetas. Un
+    panel cuyos números no cierran no sirve para decidir nada.
+    """
+    from app.inventory_loader import EstadoOperativo
+
+    def ficha(nombre, estado):
+        return InventoryEntry(nombre_pc=nombre, rak="RAK" + nombre, anydesk_id="1",
+                              cliente="GCBA", row_number=2, estado=estado)
+
+    vistas = [
+        make_host_view("H1", HostState.UP, tags=[]),
+        make_host_view("H2", HostState.DOWN, tags=[]),
+        make_host_view("H3", HostState.DOWN, tags=[]),
+    ]
+    vistas[0] = dataclasses.replace(vistas[0], entry=ficha("H1", EstadoOperativo.PRODUCCION))
+    vistas[1] = dataclasses.replace(vistas[1], entry=ficha("H2", EstadoOperativo.RMA))
+    vistas[2] = dataclasses.replace(vistas[2], entry=ficha("H3", EstadoOperativo.PRODUCCION))
+
+    monkeypatch.setattr(dashboard_service, "get_current_hosts", lambda: vistas)
+    monkeypatch.setattr(dashboard_service, "get_all_service_statuses", lambda conn: [])
+    monkeypatch.setattr(dashboard_service, "get_connection", lambda path: _ConexionFalsa())
 
     insights = get_insights()
 
     assert insights.host_up == 1
-    assert insights.host_down == 1  # solo H3, H2 quedó excluido
+    assert insights.host_down == 1  # solo H3: H2 está en RMA
+
+
+def test_get_insights_el_tag_sigue_valiendo_sin_ficha(monkeypatch):
+    """Un host sin fila en el inventario no tiene estado: ahí manda el tag."""
+    vistas = [
+        make_host_view("H1", HostState.DOWN, tags=[]),
+        make_host_view("H2", HostState.DOWN,
+                       tags=[Tag(id=1, name="RMA", color="#888", category=TAG_CATEGORY_RMA)]),
+    ]
+    monkeypatch.setattr(dashboard_service, "get_current_hosts", lambda: vistas)
+    monkeypatch.setattr(dashboard_service, "get_all_service_statuses", lambda conn: [])
+    monkeypatch.setattr(dashboard_service, "get_connection", lambda path: _ConexionFalsa())
+
+    assert get_insights().host_down == 1
 
 
 def make_entry(nombre_pc, rak="", cliente="STOCK", row_number=2):

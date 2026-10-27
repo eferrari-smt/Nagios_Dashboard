@@ -60,7 +60,6 @@ from app.tags_store import (
     assign_tag,
     create_tag,
     delete_tag,
-    get_excluded_host_names,
     get_host_tag_ids,
     list_tags,
     unassign_tag,
@@ -367,22 +366,30 @@ class DashboardInsights:
 
 
 def get_insights() -> DashboardInsights:
-    """Totales estilo Nagios (Host/Service Status Totals) para la pestaña de Insights.
+    """Totales estilo Nagios (Host/Service Status Totals) para el Dashboard.
 
-    Excluye hosts con tag RMA/Testing (ver `is_operationally_excluded`) sin
-    tocar el inventario CSV — así Insights sigue funcionando aunque el
-    inventario esté temporalmente inaccesible.
+    Usa exactamente el mismo criterio de exclusión que el resto de la
+    herramienta (`is_operationally_excluded`): manda el estado operativo del
+    inventario y el tag solo vale para hosts sin ficha.
+
+    Antes esto excluía por tag para no depender del inventario y poder seguir
+    mostrando totales aunque el CSV estuviera inaccesible. Esa independencia
+    salía cara: cuando el modelo pasó a usar el estado, el número grande y las
+    tarjetas por ambiente empezaron a contar distinto (222 contra 225) y un
+    panel cuyos números no cierran no sirve para decidir nada. Si el
+    inventario no está disponible, ahora el Dashboard avisa del problema en
+    vez de mostrar un total que no coincide con el resto de la pantalla.
     """
+    hosts = get_current_hosts()
+    vigentes = [h for h in hosts if not is_operationally_excluded(h)]
+    nombres = {h.host_name for h in vigentes}
+
+    latest = {h.host_name: h for h in vigentes}
     conn = get_connection(load_database_path())
     try:
-        latest = get_latest_snapshots(conn)
-        services = get_all_service_statuses(conn)
-        excluded = get_excluded_host_names(conn)
+        services = [s for s in get_all_service_statuses(conn) if s.host_name in nombres]
     finally:
         conn.close()
-
-    latest = {host_name: s for host_name, s in latest.items() if host_name not in excluded}
-    services = [s for s in services if s.host_name not in excluded]
 
     return DashboardInsights(
         host_up=sum(1 for s in latest.values() if s.current_state == HostState.UP),

@@ -20,6 +20,12 @@ const TAG_CATEGORY_LABELS = { rma: "RMA", testing: "Testing", refurbish: "Refurb
 const EXCLUDED_TAG_CATEGORIES = ["rma", "testing", "refurbish"];
 
 function isOperationallyExcluded(host) {
+  // Tiene que decidir lo mismo que `is_operationally_excluded` del backend: manda
+  // el estado operativo del inventario, no los tags. Cuando esto filtraba por tag
+  // y el backend ya miraba el estado, el Dashboard escondía equipos que sí estaban
+  // en producción y arrastraban un tag viejo — GCBA mostraba 165 en vez de 168.
+  if (host.estado) return host.estado !== "Produccion";
+  // Sin ficha en el inventario no hay estado que mirar: ahí sí vale el tag.
   return (host.tags || []).some((t) => EXCLUDED_TAG_CATEGORIES.includes(t.category));
 }
 
