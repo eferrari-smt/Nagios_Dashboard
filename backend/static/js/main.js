@@ -4,6 +4,7 @@ import {
   triggerPoll, editHost, replaceHost, fetchMe, logout, changePassword,
   prepareNagiosAdd, prepareNagiosRemove, executeNagiosRemove, registerHost,
   fetchAlarmas, fetchHostEventos, fetchEstados, setInventoryEstado, deleteInventoryEntry,
+  fetchMotivos,
 } from "./api.js";
 
 const NEW_AMBIENTE_OPTION = "__nuevo__";
@@ -126,6 +127,7 @@ const state = {
   alarmFilters: { search: "", severity: "", tipo: "" },
   alarmas: null,      // respuesta de /api/alarmas
   estados: [],        // opciones de estado operativo
+  motivos: [],        // catálogo de motivos de reemplazo
   pendingHosts: [],
   stockFilters: { search: "", estado: "" },
   pendingFilters: { search: "" },
@@ -932,6 +934,14 @@ function renderTimeline(history) {
   `;
 }
 
+// El motivo solo se dibuja si existe: los reemplazos anteriores a esta función
+// no lo tienen y no hay que ensuciarlos con un "sin especificar".
+function motivoChipHTML(r) {
+  const texto = r.motivo_etiqueta || r.motivo;
+  if (!texto) return "";
+  return `<span class="motivo-chip" title="Motivo del reemplazo">${escapeAttr(texto)}</span>`;
+}
+
 async function loadReplacements() {
   try {
     const reemplazos = await fetchReplacements();
@@ -946,6 +956,7 @@ async function loadReplacements() {
               <span class="replacement-arrow">→</span>
               <span class="replacement-new">${escapeAttr(r.new_rak)}</span>
             </span>
+            ${motivoChipHTML(r)}
           </div>`).join("")
       : '<p class="empty-state">Todavía no se registró ningún reemplazo.</p>';
   } catch (err) {
@@ -1022,6 +1033,7 @@ async function renderFichaEquipo(hostName) {
               <span class="replacement-arrow">→</span>
               <span class="replacement-new">${escapeAttr(r.new_rak)}</span>
             </span>
+            ${motivoChipHTML(r)}
           </div>`).join("")
       : '<p class="empty-state">Este equipo nunca fue reemplazado.</p>';
   } catch (err) {
@@ -1461,16 +1473,24 @@ async function handleSaveReplace() {
   const anydeskId = el("replaceAnydeskId").value.trim();
   const crdId = el("replaceCrdId").value.trim();
   const ambiente = resolveAmbienteValue("replaceAmbiente", "replaceAmbienteNew");
+  const motivo = el("replaceMotivo").value;
   if (!nombrePc || !rak) {
     alert("Nombre PC y RAK son obligatorios.");
     return;
   }
+  if (!motivo) {
+    alert("Elegí el motivo del reemplazo.");
+    el("replaceMotivo").focus();
+    return;
+  }
   if (!confirm(`Vas a reemplazar el RAK de "${nombrePc}". ¿Confirmás?`)) return;
   try {
-    await replaceHost(hostName, { nombre_pc: nombrePc, rak, anydesk_id: anydeskId, crd_host_id: crdId, cliente: ambiente || undefined });
+    await replaceHost(hostName, { nombre_pc: nombrePc, rak, anydesk_id: anydeskId,
+                                  crd_host_id: crdId, cliente: ambiente || undefined, motivo });
     alert("Reemplazo guardado.");
     el("replaceForm").style.display = "none";
     el("replaceHostSearch").value = "";
+    el("replaceMotivo").value = "";
     state.replaceHost = null;
     await loadReplacements();
     await loadHosts();
@@ -1579,6 +1599,7 @@ function drawerReplacementsHTML(reemplazos) {
         <span class="replacement-arrow">→</span>
         <span class="replacement-new">${escapeAttr(r.new_rak)}</span>
       </span>
+      ${motivoChipHTML(r)}
     </div>`).join("");
 }
 
@@ -1968,6 +1989,19 @@ function wireEvents() {
   });
 }
 
+async function loadMotivos() {
+  try {
+    state.motivos = await fetchMotivos();
+  } catch {
+    state.motivos = [];
+  }
+  // La opción vacía va primero: sin ella quedaría preseleccionado el primer
+  // motivo y se guardaría una causa que nadie eligió.
+  el("replaceMotivo").innerHTML =
+    '<option value="">Elegí un motivo...</option>' +
+    state.motivos.map((m) => `<option value="${m.valor}">${m.etiqueta}</option>`).join("");
+}
+
 async function loadEstados() {
   try {
     state.estados = await fetchEstados();
@@ -1985,6 +2019,7 @@ async function init() {
   }).catch(() => {});
   await Promise.all([
     refreshMeta(), loadHosts(), loadTags(), loadInsights(), loadReplacements(), loadEstados(),
+    loadMotivos(),
   ]);
   setInterval(() => {
     refreshMeta();

@@ -38,6 +38,9 @@ from app.alarmas import (
 )
 from app.inventory_loader import EstadoOperativo
 from app.dashboard_service import (
+    MOTIVOS_REEMPLAZO,
+    MOTIVOS_VALIDOS,
+    etiqueta_motivo,
     HostActivoError,
     InventoryRowNotFoundError,
     delete_inventory_entry,
@@ -80,6 +83,7 @@ from app.nagios_uploader import (
 from app.scheduler import run_poll_job
 from app.schemas import (
     AgenteMudoOut,
+    MotivoOut,
     AlarmaOut,
     AlarmasOut,
     EstadoIn,
@@ -387,7 +391,18 @@ def replace_host_endpoint(host_name: str, payload: HostReplaceIn) -> HostReplace
     Cuando el RAK cambia, el cambio también se aplica en Nagios (baja del
     viejo + alta del nuevo + reload). Si Nagios falla, el inventario se
     revierte solo, así que un error acá deja todo como estaba.
+
+    El motivo es obligatorio: sin él la tabla de reemplazos no sirve para
+    contar por qué se cambian los equipos, que es justamente para lo que está.
     """
+    if not payload.motivo:
+        raise HTTPException(status_code=422, detail="Elegí un motivo para el reemplazo.")
+    if payload.motivo not in MOTIVOS_VALIDOS:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Motivo desconocido: '{payload.motivo}'. Valores válidos: {sorted(MOTIVOS_VALIDOS)}",
+        )
+
     try:
         result = replace_host_inventory(
             host_name,
@@ -396,6 +411,7 @@ def replace_host_endpoint(host_name: str, payload: HostReplaceIn) -> HostReplace
             anydesk_id=payload.anydesk_id,
             crd_host_id=payload.crd_host_id,
             cliente=payload.cliente,
+            motivo=payload.motivo,
         )
     except HostNotEditableError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -457,6 +473,7 @@ def _replacement_out(r) -> ReplacementOut:
         id=r.id, old_rak=r.old_rak, new_rak=r.new_rak,
         old_host_name=r.old_host_name, new_host_name=r.new_host_name,
         nombre_pc=r.nombre_pc, ambiente=r.ambiente, replaced_at=r.replaced_at,
+        motivo=r.motivo, motivo_etiqueta=etiqueta_motivo(r.motivo),
     )
 
 
@@ -834,6 +851,12 @@ def delete_inventory_endpoint(rak: str) -> dict:
     except InventoryWriteError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     return {"status": "ok", "nombre_pc": nombre}
+
+
+@app.get("/api/motivos", response_model=list[MotivoOut])
+def motivos_endpoint() -> list[MotivoOut]:
+    """Catálogo de motivos de reemplazo, para poblar el desplegable."""
+    return [MotivoOut(valor=v, etiqueta=e) for v, e in MOTIVOS_REEMPLAZO]
 
 
 STATIC_DIR = Path(__file__).resolve().parents[1] / "static"

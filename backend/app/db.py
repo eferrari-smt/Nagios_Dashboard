@@ -76,7 +76,8 @@ CREATE TABLE IF NOT EXISTS host_replacements (
     new_host_name TEXT NOT NULL,
     nombre_pc TEXT,
     ambiente TEXT,
-    replaced_at INTEGER NOT NULL
+    replaced_at INTEGER NOT NULL,
+    motivo TEXT                  -- por qué se reemplazó; NULL en los registros previos
 );
 CREATE INDEX IF NOT EXISTS idx_host_replacements_new ON host_replacements(new_host_name);
 CREATE INDEX IF NOT EXISTS idx_host_replacements_old ON host_replacements(old_host_name);
@@ -153,6 +154,7 @@ class ReplacementRow:
     nombre_pc: str | None
     ambiente: str | None
     replaced_at: int
+    motivo: str | None = None
 
 
 @dataclass(frozen=True)
@@ -196,6 +198,11 @@ def _migrate_schema(conn: sqlite3.Connection) -> None:
     tag_columns = [row[1] for row in conn.execute("PRAGMA table_info(tags)").fetchall()]
     if "category" not in tag_columns:
         conn.execute("ALTER TABLE tags ADD COLUMN category TEXT")
+        conn.commit()
+
+    repl_columns = [row[1] for row in conn.execute("PRAGMA table_info(host_replacements)").fetchall()]
+    if "motivo" not in repl_columns:
+        conn.execute("ALTER TABLE host_replacements ADD COLUMN motivo TEXT")
         conn.commit()
 
 
@@ -518,6 +525,7 @@ def record_host_replacement(
     nombre_pc: str | None,
     ambiente: str | None,
     replaced_at: int,
+    motivo: str | None = None,
 ) -> None:
     """Deja registrado un reemplazo de equipo.
 
@@ -528,10 +536,10 @@ def record_host_replacement(
     conn.execute(
         """
         INSERT INTO host_replacements
-            (old_rak, new_rak, old_host_name, new_host_name, nombre_pc, ambiente, replaced_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+            (old_rak, new_rak, old_host_name, new_host_name, nombre_pc, ambiente, replaced_at, motivo)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """,
-        (old_rak, new_rak, old_host_name, new_host_name, nombre_pc, ambiente, replaced_at),
+        (old_rak, new_rak, old_host_name, new_host_name, nombre_pc, ambiente, replaced_at, motivo),
     )
     conn.commit()
 
@@ -549,7 +557,7 @@ def get_replacement_chain(conn: sqlite3.Connection, host_name: str, limit: int =
     while actual and actual not in vistos and len(cadena) < limit:
         vistos.add(actual)
         row = conn.execute(
-            "SELECT id, old_rak, new_rak, old_host_name, new_host_name, nombre_pc, ambiente, replaced_at "
+            "SELECT id, old_rak, new_rak, old_host_name, new_host_name, nombre_pc, ambiente, replaced_at, motivo "
             "FROM host_replacements WHERE new_host_name = ? ORDER BY replaced_at DESC LIMIT 1",
             (actual,),
         ).fetchone()
@@ -562,7 +570,7 @@ def get_replacement_chain(conn: sqlite3.Connection, host_name: str, limit: int =
 
 def get_all_replacements(conn: sqlite3.Connection) -> list[ReplacementRow]:
     rows = conn.execute(
-        "SELECT id, old_rak, new_rak, old_host_name, new_host_name, nombre_pc, ambiente, replaced_at "
+        "SELECT id, old_rak, new_rak, old_host_name, new_host_name, nombre_pc, ambiente, replaced_at, motivo "
         "FROM host_replacements ORDER BY replaced_at DESC"
     ).fetchall()
     return [_replacement_row(r) for r in rows]
@@ -572,6 +580,7 @@ def _replacement_row(r) -> ReplacementRow:
     return ReplacementRow(
         id=r[0], old_rak=r[1], new_rak=r[2], old_host_name=r[3],
         new_host_name=r[4], nombre_pc=r[5], ambiente=r[6], replaced_at=r[7],
+        motivo=r[8] if len(r) > 8 else None,
     )
 
 

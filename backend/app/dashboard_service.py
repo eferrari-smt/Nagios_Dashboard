@@ -567,6 +567,30 @@ class ReplaceResult:
     validation_output: str
 
 
+# Por qué se reemplazó un equipo. El valor se guarda como texto libre en la
+# base a propósito: la lista de acá puede cambiar sin migrar nada ni invalidar
+# los registros viejos, y sirve para contar reemplazos por causa.
+MOTIVOS_REEMPLAZO: tuple[tuple[str, str], ...] = (
+    ("refurbish", "Refurbish programado"),
+    ("falla_pc", "Mal funcionamiento de la PC"),
+    ("cambio_nuc", "Reemplazo de NUC"),
+    ("falla_disco", "Falla de disco"),
+    ("falla_modem", "Falla de módem o SIM"),
+    ("vandalismo", "Vandalismo o robo"),
+    ("obra", "Obra o reubicación del gabinete"),
+    ("otro", "Otro"),
+)
+
+MOTIVOS_VALIDOS = {clave for clave, _ in MOTIVOS_REEMPLAZO}
+
+
+def etiqueta_motivo(clave: str | None) -> str | None:
+    """Nombre legible de un motivo. Un valor viejo o desconocido se muestra tal cual."""
+    if not clave:
+        return None
+    return dict(MOTIVOS_REEMPLAZO).get(clave, clave)
+
+
 def replace_host_inventory(
     host_name: str,
     *,
@@ -575,6 +599,7 @@ def replace_host_inventory(
     anydesk_id: str,
     crd_host_id: str | None = None,
     cliente: str | None = None,
+    motivo: str | None = None,
 ) -> ReplaceResult:
     """Reemplazo completo de un host — única vía que toca el RAK, y ahora también Nagios.
 
@@ -635,7 +660,7 @@ def replace_host_inventory(
             old_rak=entry.rak, new_rak=rak,
             old_host_name=result.old_host_name, new_host_name=result.new_host_name,
             nombre_pc=nombre_pc, ambiente=cliente or entry.cliente,
-            replaced_at=int(time.time()),
+            replaced_at=int(time.time()), motivo=motivo,
         )
     finally:
         conn.close()

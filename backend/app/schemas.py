@@ -51,6 +51,7 @@ class HostReplaceIn(BaseModel):
     anydesk_id: str
     crd_host_id: str | None = None
     cliente: str | None = None
+    motivo: str | None = None
 
 
 class HostReplaceOut(BaseModel):
@@ -121,6 +122,8 @@ class ReplacementOut(BaseModel):
     nombre_pc: str | None = None
     ambiente: str | None = None
     replaced_at: int
+    motivo: str | None = None          # clave del catálogo, p. ej. 'falla_pc'
+    motivo_etiqueta: str | None = None  # el nombre legible, para mostrar
 
 
 class HostNagiosInfoOut(BaseModel):
@@ -284,5 +287,11 @@ class EstadoIn(BaseModel):
 
 
 class EstadoOpcionOut(BaseModel):
+    valor: str
+    etiqueta: str
+
+
+class MotivoOut(BaseModel):
+    """Una opción del catálogo de motivos de reemplazo."""
     valor: str
     etiqueta: str

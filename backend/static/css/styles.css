@@ -1342,3 +1342,15 @@ details.insights-panel > summary h2 { margin: 0; }
 
 .intervencion-pie .intervencion-detalle { flex: 1 1 320px; min-width: 0; }
 .intervencion-pie .action-btn { flex: none; }
+
+/* Motivo del reemplazo: por qué se cambió el equipo, no qué se cambió */
+.motivo-chip {
+  display: inline-block;
+  padding: 1px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  font-size: 0.78rem;
+  color: var(--color-text-muted);
+  background: var(--color-bg);
+  white-space: nowrap;
+}

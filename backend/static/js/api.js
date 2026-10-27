@@ -69,9 +69,10 @@ export function editHost(hostName, { nombre_pc, notas, sim, empresa, ambiente, e
   return sendJSON(`/api/hosts/${encodeURIComponent(hostName)}`, "PATCH", payload);
 }
 
-export function replaceHost(hostName, { nombre_pc, rak, anydesk_id, crd_host_id, cliente }) {
+export function replaceHost(hostName, { nombre_pc, rak, anydesk_id, crd_host_id, cliente, motivo }) {
   return sendJSON(`/api/hosts/${encodeURIComponent(hostName)}/replace`, "POST", {
     nombre_pc, rak, anydesk_id, crd_host_id: crd_host_id || null, cliente: cliente || null,
+    motivo: motivo || null,
   });
 }
 
@@ -168,4 +169,8 @@ export function setInventoryEstado(rak, estado) {
 
 export function deleteInventoryEntry(rak) {
   return sendJSON(`/api/inventory/${encodeURIComponent(rak)}`, "DELETE");
+}
+
+export function fetchMotivos() {
+  return getJSON("/api/motivos");
 }

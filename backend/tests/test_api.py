@@ -374,7 +374,7 @@ def test_hosts_serializes_services(monkeypatch):
 def test_replace_host_updates_full_row(monkeypatch):
     calls = []
 
-    def fake_replace(host_name, nombre_pc, rak, anydesk_id, crd_host_id=None, cliente=None):
+    def fake_replace(host_name, nombre_pc, rak, anydesk_id, crd_host_id=None, cliente=None, motivo=None):
         calls.append((host_name, nombre_pc, rak, anydesk_id, crd_host_id, cliente))
         return ReplaceResult(
             old_rak="RAKVIEJO456", old_host_name="RAKVIEJO456", new_host_name="RAKNUEVO123",
@@ -384,7 +384,8 @@ def test_replace_host_updates_full_row(monkeypatch):
     monkeypatch.setattr(api, "replace_host_inventory", fake_replace)
     response = client.post(
         "/api/hosts/HOST1/replace",
-        json={"nombre_pc": "Nuevo Nombre", "rak": "RAKNUEVO123", "anydesk_id": "999"},
+        json={"nombre_pc": "Nuevo Nombre", "rak": "RAKNUEVO123", "anydesk_id": "999",
+              "motivo": "falla_pc"},
     )
     assert response.status_code == 200
     assert calls == [("HOST1", "Nuevo Nombre", "RAKNUEVO123", "999", None, None)]
@@ -394,13 +395,13 @@ def test_replace_host_updates_full_row(monkeypatch):
 
 
 def test_replace_host_returns_422_when_nagios_validation_fails(monkeypatch):
-    def raise_validation_error(host_name, nombre_pc, rak, anydesk_id, crd_host_id=None, cliente=None):
+    def raise_validation_error(host_name, nombre_pc, rak, anydesk_id, crd_host_id=None, cliente=None, motivo=None):
         raise NagiosValidationError("no validó — se revirtió el inventario")
 
     monkeypatch.setattr(api, "replace_host_inventory", raise_validation_error)
     response = client.post(
         "/api/hosts/HOST1/replace",
-        json={"nombre_pc": "N", "rak": "RAKNUEVO123", "anydesk_id": "999"},
+        json={"nombre_pc": "N", "rak": "RAKNUEVO123", "anydesk_id": "999", "motivo": "falla_pc"},
     )
     assert response.status_code == 422
     assert "revirtió" in response.json()["detail"]
@@ -436,25 +437,25 @@ def test_register_host_returns_422_when_inventory_data_missing(monkeypatch):
 
 
 def test_replace_host_returns_404_when_unmatched(monkeypatch):
-    def raise_not_editable(host_name, nombre_pc, rak, anydesk_id, crd_host_id=None, cliente=None):
+    def raise_not_editable(host_name, nombre_pc, rak, anydesk_id, crd_host_id=None, cliente=None, motivo=None):
         raise HostNotEditableError(f"'{host_name}' no tiene fila propia.")
 
     monkeypatch.setattr(api, "replace_host_inventory", raise_not_editable)
     response = client.post(
         "/api/hosts/HOST1/replace",
-        json={"nombre_pc": "X", "rak": "Y", "anydesk_id": "Z"},
+        json={"nombre_pc": "X", "rak": "Y", "anydesk_id": "Z", "motivo": "refurbish"},
     )
     assert response.status_code == 404
 
 
 def test_replace_host_returns_503_when_inventory_locked(monkeypatch):
-    def raise_write_error(host_name, nombre_pc, rak, anydesk_id, crd_host_id=None, cliente=None):
+    def raise_write_error(host_name, nombre_pc, rak, anydesk_id, crd_host_id=None, cliente=None, motivo=None):
         raise InventoryWriteError("archivo abierto en otro programa")
 
     monkeypatch.setattr(api, "replace_host_inventory", raise_write_error)
     response = client.post(
         "/api/hosts/HOST1/replace",
-        json={"nombre_pc": "X", "rak": "Y", "anydesk_id": "Z"},
+        json={"nombre_pc": "X", "rak": "Y", "anydesk_id": "Z", "motivo": "refurbish"},
     )
     assert response.status_code == 503
 
